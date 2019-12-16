@@ -191,37 +191,6 @@ where
         self.set_address_window(sx, sy, ex, ey)?;
         self.write_pixels(colors)
     }
-
-    //////////////////////////////////////////////////////////
-
-    /// Batch the pixels into rows
-    fn rows<P>(&mut self, pixels: P) -> RowIterator<P>
-    where
-        P: Iterator<Item = Pixel<Rgb565>>, {
-        RowIterator::<P> {
-            pixels,
-            x_left: 0,
-            x_right: 0,
-            y: 0,
-            colors: RowColors::new(),
-            first_pixel: true,
-        }
-    }
-    
-    /// Batch the rows into blocks, which are contiguous rows
-    fn blocks<R>(&mut self, rows: R) -> BlockIterator<R>
-    where
-        R: Iterator<Item = PixelRow>, {
-        BlockIterator::<R> {
-            rows,
-            x_left: 0,
-            x_right: 0,
-            y_top: 0,
-            y_bottom: 0,
-            colors: BlockColors::new(),
-            first_row: true,
-        }
-    }    
 }
 
 /*
@@ -242,6 +211,37 @@ where
         }
     }
 */
+
+//////////////////////////////////////////////////////////
+
+/// Batch the pixels into rows
+fn to_rows<P>(pixels: P) -> RowIterator<P>
+where
+    P: Iterator<Item = Pixel<Rgb565>>, {
+    RowIterator::<P> {
+        pixels,
+        x_left: 0,
+        x_right: 0,
+        y: 0,
+        colors: RowColors::new(),
+        first_pixel: true,
+    }
+}
+
+/// Batch the rows into blocks, which are contiguous rows
+fn to_blocks<R>(rows: R) -> BlockIterator<R>
+where
+    R: Iterator<Item = PixelRow>, {
+    BlockIterator::<R> {
+        rows,
+        x_left: 0,
+        x_right: 0,
+        y_top: 0,
+        y_bottom: 0,
+        colors: BlockColors::new(),
+        first_row: true,
+    }
+}    
 
 /// Max number of pixels per row
 type MaxRowSize = heapless::consts::U240;
