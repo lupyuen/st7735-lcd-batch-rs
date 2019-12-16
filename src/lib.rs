@@ -214,7 +214,7 @@ where
 
 //////////////////////////////////////////////////////////
 
-/// Batch the pixels into rows
+/// Batch the pixels into rows of contiguous pixels
 fn to_rows<P>(pixels: P) -> RowIterator<P>
 where
     P: Iterator<Item = Pixel<Rgb565>>, {
@@ -296,6 +296,7 @@ pub struct PixelBlock {
 impl<P: Iterator<Item = Pixel<Rgb565>>> Iterator for RowIterator<P> {
     type Item = PixelRow;
 
+    /// Return the next row of contiguous pixels
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.pixels.next() {
@@ -359,6 +360,7 @@ impl<P: Iterator<Item = Pixel<Rgb565>>> Iterator for RowIterator<P> {
 impl<R: Iterator<Item = PixelRow>> Iterator for BlockIterator<R> {
     type Item = PixelBlock;
 
+    /// Return the next block of contiguous pixel rows
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.rows.next() {
