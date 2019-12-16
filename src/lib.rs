@@ -195,35 +195,32 @@ where
     //////////////////////////////////////////////////////////
 
     /// Batch the pixels into rows
-    fn pixels_by_row<T, P>(&mut self, item_pixels: T) -> RowIterator<P>
+    fn rows<P>(&mut self, pixels: P) -> RowIterator<P>
     where
-        T: IntoIterator<Item = Pixel<Rgb565>>, 
-        //P: Iterator<Item = Pixel<Rgb565>>, 
-        {
-        let iter = item_pixels.into_iter();
+        P: Iterator<Item = Pixel<Rgb565>>, {
         RowIterator::<P> {
-            pixels: iter,
-            x: 0,
+            pixels,
+            x_left: 0,
+            x_right: 0,
             y: 0,
-            color: 0,
+            colors: RowColors::new(),
             first_pixel: true,
         }
-        /*
-        for Pixel(coord, color) in item_pixels {
-            self.set_pixel(coord.0 as u16, coord.1 as u16, color.0).expect("pixel write failed");
-        }
-        */
     }
     
     /// Batch the rows into blocks, which are contiguous rows
-    fn pixels_by_block<T>(&mut self, item_pixels: T)
+    fn blocks<R>(&mut self, rows: R) -> BlockIterator<R>
     where
-        T: IntoIterator<Item = Pixel<Rgb565>>, {
-        /*
-        for Pixel(coord, color) in item_pixels {
-            self.set_pixel(coord.0 as u16, coord.1 as u16, color.0).expect("pixel write failed");
+        R: Iterator<Item = PixelRow>, {
+        BlockIterator::<R> {
+            rows,
+            x_left: 0,
+            x_right: 0,
+            y_top: 0,
+            y_bottom: 0,
+            colors: BlockColors::new(),
+            first_row: true,
         }
-        */
     }    
 }
 
@@ -246,81 +243,181 @@ where
     }
 */
 
+/// Max number of pixels per row
+type MaxRowSize = heapless::consts::U240;
+/// Max number of rows per block
+type MaxBlockSize = heapless::consts::U10;
+
+/// Consecutive color words for a row
+type RowColors = heapless::Vec::<u16, MaxRowSize>;
+/// Consecutive color rows for a block
+type BlockColors = heapless::Vec::<RowColors, MaxBlockSize>;
+
 /// Iterator for each row in the pixel data
-#[derive(Debug, Clone, Copy)]
-pub struct RowIterator<P /* : Iterator<Item = Pixel<Rgb565>> */ > {
+#[derive(Debug, Clone)]
+pub struct RowIterator<P: Iterator<Item = Pixel<Rgb565>>> {
     pixels:      P,
-    x:           u16,
+    x_left:      u16,
+    x_right:     u16,
     y:           u16,
-    color:       u16,
+    colors:      RowColors,
     first_pixel: bool,
 }
 
+/// Iterator for each block in the pixel data
+#[derive(Debug, Clone)]
+pub struct BlockIterator<R: Iterator<Item = PixelRow>> {
+    rows:        R,
+    x_left:      u16,
+    x_right:     u16,
+    y_top:       u16,
+    y_bottom:    u16,
+    colors:      BlockColors,
+    first_row:   bool,
+}
+
+/// A row of contiguous pixels
 pub struct PixelRow {
     pub x_left:  u16,
     pub x_right: u16,
     pub y:       u16,
-    pub colors:  u16, ////
+    pub colors:  RowColors,
 }
 
-impl<P /* : Iterator<Item = Pixel<Rgb565>> */ > Iterator for RowIterator<P> {
+/// A block of contiguous row
+pub struct PixelBlock {
+    pub x_left:   u16,
+    pub x_right:  u16,
+    pub y_top:    u16,
+    pub y_bottom: u16,
+    pub colors:   BlockColors,
+}
+
+impl<P: Iterator<Item = Pixel<Rgb565>>> Iterator for RowIterator<P> {
     type Item = PixelRow;
 
     fn next(&mut self) -> Option<Self::Item> {
-        None
-        /*
-            // Don't render anything if the rectangle has no border or fill color.
-            if self.style.stroke_color.is_none() && self.style.fill_color.is_none() {
-                return None;
+        loop {
+            match self.pixels.next() {
+                None => {
+                    if self.first_pixel {
+                        return None;  //  No pixels to group
+                    }                    
+                    //  Else return previous pixels as row.
+                    let row = PixelRow {
+                        x_left: self.x_left,
+                        x_right: self.x_right,
+                        y: self.y,
+                        colors: self.colors.clone(),
+                    };
+                    self.colors.clear();
+                    self.first_pixel = true;
+                    return Some(row);
+                }
+                Some(Pixel(coord, color)) => {
+                    let x = coord.0 as u16;
+                    let y = coord.1 as u16;
+                    let color = color.0;
+                    //  Save the first pixel as the row start and handle next pixel.
+                    if self.first_pixel {
+                        self.first_pixel = false;
+                        self.x_left = x;
+                        self.x_right = x;
+                        self.y = y;
+                        self.colors.clear();
+                        self.colors.push(color)
+                            .expect("never");
+                        continue;
+                    }
+                    //  If this pixel is adjacent to the previous pixel, add to the row.
+                    if x == self.x_right + 1 && y == self.y {
+                        self.colors.push(color)
+                            .expect("row overflow");
+                        self.x_right = x;
+                        continue;
+                    }
+                    //  Else return previous pixels as row.
+                    let row = PixelRow {
+                        x_left: self.x_left,
+                        x_right: self.x_right,
+                        y: self.y,
+                        colors: self.colors.clone(),
+                    };
+                    self.x_left = x;
+                    self.x_right = x;
+                    self.y = y;
+                    self.colors.clear();
+                    self.colors.push(color)
+                        .expect("never");
+                    return Some(row);
+                }
             }
+        }
+    }
+}
 
-            loop {
-                let mut out = None;
+impl<R: Iterator<Item = PixelRow>> Iterator for BlockIterator<R> {
+    type Item = PixelBlock;
 
-                // Finished, i.e. we're below the rect
-                if self.p.y > self.bottom_right.y {
-                    break None;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.rows.next() {
+                None => {
+                    if self.first_row {
+                        return None;  //  No rows to group
+                    }                    
+                    //  Else return previous rows as block.
+                    let row = PixelBlock {
+                        x_left: self.x_left,
+                        x_right: self.x_right,
+                        y_top: self.y_top,
+                        y_bottom: self.y_bottom,
+                        colors: self.colors.clone(),
+                    };
+                    self.colors.clear();
+                    self.first_row = true;
+                    return Some(row);
                 }
-
-                let border_width = self.style.stroke_width as i32;
-                let tl = self.top_left;
-                let br = self.bottom_right;
-
-                // Border
-                if (
-                    // Top border
-                    (self.p.y >= tl.y && self.p.y < tl.y + border_width)
-                // Bottom border
-                || (self.p.y <= br.y && self.p.y > br.y - border_width)
-                // Left border
-                || (self.p.x >= tl.x && self.p.x < tl.x + border_width)
-                // Right border
-                || (self.p.x <= br.x && self.p.x > br.x - border_width)
-                ) && self.style.stroke_color.is_some()
-                {
-                    out = Some(Pixel(
-                        self.p,
-                        self.style.stroke_color.expect("Expected stroke"),
-                    ));
-                }
-                // Fill
-                else if let Some(fill) = self.style.fill_color {
-                    out = Some(Pixel(self.p, fill));
-                }
-
-                self.p.x += 1;
-
-                // Reached end of row? Jump down one line
-                if self.p.x > self.bottom_right.x {
-                    self.p.x = self.top_left.x;
-                    self.p.y += 1;
-                }
-
-                if out.is_some() {
-                    break out;
+                Some(PixelRow { x_left, x_right, y, colors, .. }) => {
+                    //  Save the first row as the block start and handle next block.
+                    if self.first_row {
+                        self.first_row = false;
+                        self.x_left = x_left;
+                        self.x_right = x_right;
+                        self.y_top = y;
+                        self.y_bottom = y;
+                        self.colors.clear();
+                        self.colors.push(colors)
+                            .expect("never");
+                        continue;
+                    }
+                    //  If this row is adjacent to the previous row and same size, add to the block.
+                    if y == self.y_bottom + 1 && x_left == self.x_left && x_right == self.x_right {                        
+                        //  Don't add row if too many rows in the block.
+                        if self.colors.push(colors.clone()).is_ok() {
+                            self.y_bottom = y;
+                            continue;    
+                        }
+                    }
+                    //  Else return previous rows as block.
+                    let row = PixelBlock {
+                        x_left: self.x_left,
+                        x_right: self.x_right,
+                        y_top: self.y_top,
+                        y_bottom: self.y_bottom,
+                        colors: self.colors.clone(),
+                    };
+                    self.x_left = x_left;
+                    self.x_right = x_right;
+                    self.y_top = y;
+                    self.y_bottom = y;
+                    self.colors.clear();
+                    self.colors.push(colors)
+                        .expect("never");
+                    return Some(row);
                 }
             }
-        */
+        }
     }
 }
 

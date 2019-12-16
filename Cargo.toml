@@ -12,6 +12,7 @@ documentation = "https://docs.rs/st7735-lcd"
 [dependencies]
 embedded-hal = "0.2"
 nb = "0.1"
+heapless = "0.5.1" #### `static` friendly data structures that don't require dynamic memory allocation
 
 [dependencies.num-traits]
 version = "0.2"
