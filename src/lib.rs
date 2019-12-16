@@ -191,8 +191,120 @@ where
         self.set_address_window(sx, sy, ex, ey)?;
         self.write_pixels(colors)
     }
+
+    //////////////////////////////////////////////////////////
+
+    /// Batch the pixels into rows
+    fn batch_by_rows<T>(&mut self, item_pixels: T)
+    where
+        T: IntoIterator<Item = Pixel<Rgb565>>,
+    {
+        for Pixel(coord, color) in item_pixels {
+            self.set_pixel(coord.0 as u16, coord.1 as u16, color.0).expect("pixel write failed");
+        }
+    }
+    
+    /// Batch the rows into blocks
+    fn batch_by_blocks<T>(&mut self, item_pixels: T)
+    where
+        T: IntoIterator<Item = Pixel<Rgb565>>,
+    {
+        for Pixel(coord, color) in item_pixels {
+            self.set_pixel(coord.0 as u16, coord.1 as u16, color.0).expect("pixel write failed");
+        }
+    }    
 }
 
+impl<C> IntoIterator for BatchPixels<C>
+where
+    C: PixelColor,
+{
+    type Item = Pixel<C>;
+    type IntoIter = RowIterator<C>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        RowIterator {
+            top_left: self.top_left,
+            bottom_right: self.bottom_right,
+            style: self.style,
+            p: self.top_left,
+        }
+    }
+}
+
+/// Row iterator for each row in the pixel batch
+#[derive(Debug, Clone, Copy)]
+pub struct RowIterator<C: PixelColor>
+where
+    C: PixelColor,
+{
+    left: Point,
+    right: Point,
+    style: Style<C>,
+}
+
+impl<C> Iterator for RowIterator<C>
+where
+    C: PixelColor,
+{
+    type Item = Pixel<C>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Don't render anything if the rectangle has no border or fill color.
+        if self.style.stroke_color.is_none() && self.style.fill_color.is_none() {
+            return None;
+        }
+
+        loop {
+            let mut out = None;
+
+            // Finished, i.e. we're below the rect
+            if self.p.y > self.bottom_right.y {
+                break None;
+            }
+
+            let border_width = self.style.stroke_width as i32;
+            let tl = self.top_left;
+            let br = self.bottom_right;
+
+            // Border
+            if (
+                // Top border
+                (self.p.y >= tl.y && self.p.y < tl.y + border_width)
+            // Bottom border
+            || (self.p.y <= br.y && self.p.y > br.y - border_width)
+            // Left border
+            || (self.p.x >= tl.x && self.p.x < tl.x + border_width)
+            // Right border
+            || (self.p.x <= br.x && self.p.x > br.x - border_width)
+            ) && self.style.stroke_color.is_some()
+            {
+                out = Some(Pixel(
+                    self.p,
+                    self.style.stroke_color.expect("Expected stroke"),
+                ));
+            }
+            // Fill
+            else if let Some(fill) = self.style.fill_color {
+                out = Some(Pixel(self.p, fill));
+            }
+
+            self.p.x += 1;
+
+            // Reached end of row? Jump down one line
+            if self.p.x > self.bottom_right.x {
+                self.p.x = self.top_left.x;
+                self.p.y += 1;
+            }
+
+            if out.is_some() {
+                break out;
+            }
+        }
+    }
+}
+
+///////////////////////////////////
 
 #[cfg(feature = "graphics")]
 extern crate embedded_graphics;
