@@ -198,8 +198,9 @@ where
     fn pixels_by_row<T, P>(&mut self, item_pixels: T) -> RowIterator<P>
     where
         T: IntoIterator<Item = Pixel<Rgb565>>, 
-        P: Iterator<Item = Pixel<Rgb565>>, {
-        let iter: P = item_pixels.into_iter();
+        //P: Iterator<Item = Pixel<Rgb565>>, 
+        {
+        let iter = item_pixels.into_iter();
         RowIterator::<P> {
             pixels: iter,
             x: 0,
@@ -247,7 +248,7 @@ where
 
 /// Iterator for each row in the pixel data
 #[derive(Debug, Clone, Copy)]
-pub struct RowIterator<P: Iterator<Item = Pixel<Rgb565>>> {
+pub struct RowIterator<P /* : Iterator<Item = Pixel<Rgb565>> */ > {
     pixels:      P,
     x:           u16,
     y:           u16,
@@ -262,7 +263,7 @@ pub struct PixelRow {
     pub colors:  u16, ////
 }
 
-impl<P: Iterator<Item = Pixel<Rgb565>>> Iterator for RowIterator<P> {
+impl<P /* : Iterator<Item = Pixel<Rgb565>> */ > Iterator for RowIterator<P> {
     type Item = PixelRow;
 
     fn next(&mut self) -> Option<Self::Item> {
