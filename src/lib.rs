@@ -423,6 +423,25 @@ impl<R: Iterator<Item = PixelRow>> Iterator for BlockIterator<R> {
     }
 }
 
+fn draw_blocks<SPI, DC, RST, T>(display: ST7735<SPI, DC, RST>, item_pixels: T)
+where
+    SPI: spi::Write<u8>,
+    DC: OutputPin,
+    RST: OutputPin,
+    T: IntoIterator<Item = Pixel<Rgb565>> + Dimensions, {
+    let pixels = item_pixels.into_iter();
+    let rows = to_rows(pixels);
+    let blocks = to_blocks(rows);
+    for PixelBlock { x_left, x_right, y_top, y_bottom, colors } in blocks {
+        display.set_pixels(
+            x_left, 
+            y_top,
+            x_right,
+            y_bottom,
+            colors);
+    }
+}
+
 ///////////////////////////////////
 
 #[cfg(feature = "graphics")]
