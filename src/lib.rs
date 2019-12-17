@@ -245,13 +245,13 @@ where
 
 /// Max number of pixels per row
 type MaxRowSize = heapless::consts::U240;
-/// Max number of rows per block
-type MaxBlockSize = heapless::consts::U10;
+/// Max number of pixels per block
+type MaxBlockSize = heapless::consts::U1024;
 
 /// Consecutive color words for a row
 type RowColors = heapless::Vec::<u16, MaxRowSize>;
-/// Consecutive color rows for a block
-type BlockColors = heapless::Vec::<RowColors, MaxBlockSize>;
+/// Consecutive color words for a block
+type BlockColors = heapless::Vec::<u16, MaxBlockSize>;
 
 /// Iterator for each row in the pixel data
 #[derive(Debug, Clone)]
@@ -389,14 +389,14 @@ impl<R: Iterator<Item = PixelRow>> Iterator for BlockIterator<R> {
                         self.y_top = y;
                         self.y_bottom = y;
                         self.colors.clear();
-                        self.colors.push(colors)
+                        self.colors.extend_from_slice(&colors)
                             .expect("never");
                         continue;
                     }
                     //  If this row is adjacent to the previous row and same size, add to the block.
                     if y == self.y_bottom + 1 && x_left == self.x_left && x_right == self.x_right {                        
-                        //  Don't add row if too many rows in the block.
-                        if self.colors.push(colors.clone()).is_ok() {
+                        //  Don't add row if too many pixels in the block.
+                        if self.colors.extend_from_slice(&colors).is_ok() {
                             self.y_bottom = y;
                             continue;    
                         }
@@ -414,7 +414,7 @@ impl<R: Iterator<Item = PixelRow>> Iterator for BlockIterator<R> {
                     self.y_top = y;
                     self.y_bottom = y;
                     self.colors.clear();
-                    self.colors.push(colors)
+                    self.colors.extend_from_slice(&colors)
                         .expect("never");
                     return Some(row);
                 }
@@ -423,7 +423,8 @@ impl<R: Iterator<Item = PixelRow>> Iterator for BlockIterator<R> {
     }
 }
 
-fn draw_blocks<SPI, DC, RST, T>(display: ST7735<SPI, DC, RST>, item_pixels: T)
+/// Draw the pixels as blocks of contiguous pixel rows
+fn draw_blocks<SPI, DC, RST, T>(display: &mut ST7735<SPI, DC, RST>, item_pixels: T) -> Result<(),()>
 where
     SPI: spi::Write<u8>,
     DC: OutputPin,
@@ -432,14 +433,15 @@ where
     let pixels = item_pixels.into_iter();
     let rows = to_rows(pixels);
     let blocks = to_blocks(rows);
-    for PixelBlock { x_left, x_right, y_top, y_bottom, colors } in blocks {
+    for PixelBlock { x_left, x_right, y_top, y_bottom, colors, .. } in blocks {
         display.set_pixels(
             x_left, 
             y_top,
             x_right,
             y_bottom,
-            colors);
+            colors) ? ;
     }
+    Ok(())
 }
 
 ///////////////////////////////////
