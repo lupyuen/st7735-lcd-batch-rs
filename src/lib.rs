@@ -111,6 +111,10 @@ where
         self.write_command(Instruction::COLMOD, Some(&[0x05]))?;
         self.write_command(Instruction::DISPON, None)?;
         delay.delay_ms(200);
+
+        #[cfg(feature = "noblock_spi")]         //  If non-blocking SPI is enabled...
+        mynewt::spi::spi_noblock_write_flush()  //  Enqueue the pending SPI request
+            .expect("spi flush fail");
         Ok(())
     }
 
@@ -121,6 +125,22 @@ where
         self.rst.set_high().map_err(|_| ())
     }
 
+    #[cfg(feature = "noblock_spi")]  //  If non-blocking SPI is enabled...
+    fn write_command(&mut self, command: Instruction, params: Option<&[u8]>) -> Result<(), ()> {
+        //  Write the Command Byte.
+        mynewt::spi::spi_noblock_write_command(
+            command.to_u8().unwrap()
+        ).expect("spi cmd fail");
+        //  Then write the Data Bytes.
+        if params.is_some() {
+            mynewt::spi::spi_noblock_write_data(
+                params.unwrap()
+            ).expect("spi data fail");
+        }
+        Ok(())
+    }
+
+    #[cfg(not(feature = "noblock_spi"))]  //  Previously with blocking SPI...
     fn write_command(&mut self, command: Instruction, params: Option<&[u8]>) -> Result<(), ()> {
         self.dc.set_low().map_err(|_| ())?;
         self.spi.write(&[command.to_u8().unwrap()]).map_err(|_| ())?;
@@ -130,6 +150,16 @@ where
         Ok(())
     }
 
+    #[cfg(feature = "noblock_spi")]  //  If non-blocking SPI is enabled...
+    fn write_data(&mut self, data: &[u8]) -> Result<(), ()> {
+        //  Write the data bytes,
+        mynewt::spi::spi_noblock_write_data(
+            data
+        ).expect("spi data fail");
+        Ok(())
+    }
+
+    #[cfg(not(feature = "noblock_spi"))]  //  Previously with blocking SPI...
     fn write_data(&mut self, data: &[u8]) -> Result<(), ()> {
         self.dc.set_high().map_err(|_| ())?;
         self.spi.write(data).map_err(|_| ())
@@ -174,7 +204,12 @@ where
     pub fn set_pixel(&mut self, x: u16, y: u16, color: u16) -> Result <(), ()> {
         self.set_address_window(x, y, x, y)?;
         self.write_command(Instruction::RAMWR, None)?;
-        self.write_word(color)
+        self.write_word(color) ? ;
+
+        #[cfg(feature = "noblock_spi")]         //  If non-blocking SPI is enabled...
+        mynewt::spi::spi_noblock_write_flush()  //  Enqueue the pending SPI request
+            .expect("spi flush fail");
+        Ok(())
     }
 
     /// Writes pixel colors sequentially into the current drawing window
@@ -183,34 +218,24 @@ where
         for color in colors {
             self.write_word(color)?;
         }
+
+        #[cfg(feature = "noblock_spi")]         //  If non-blocking SPI is enabled...
+        mynewt::spi::spi_noblock_write_flush()  //  Enqueue the pending SPI request
+            .expect("spi flush fail");
         Ok(())
     }
 
     /// Sets pixel colors at the given drawing window
     pub fn set_pixels<P: IntoIterator<Item = u16>>(&mut self, sx: u16, sy: u16, ex: u16, ey: u16, colors: P) -> Result <(), ()> {
         self.set_address_window(sx, sy, ex, ey)?;
-        self.write_pixels(colors)
+        self.write_pixels(colors) ? ;
+
+        #[cfg(feature = "noblock_spi")]         //  If non-blocking SPI is enabled...
+        mynewt::spi::spi_noblock_write_flush()  //  Enqueue the pending SPI request
+            .expect("spi flush fail");
+        Ok(())
     }
 }
-
-/*
-    impl<C> IntoIterator for BatchPixels<C>
-    where
-        C: PixelColor,
-    {
-        type Item = Pixel<C>;
-        type IntoIter = RowIterator<C>;
-
-        fn into_iter(self) -> Self::IntoIter {
-            RowIterator {
-                top_left: self.top_left,
-                bottom_right: self.bottom_right,
-                style: self.style,
-                p: self.top_left,
-            }
-        }
-    }
-*/
 
 //////////////////////////////////////////////////////////
 
