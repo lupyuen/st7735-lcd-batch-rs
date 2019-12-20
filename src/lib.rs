@@ -82,6 +82,10 @@ where
     pub fn init<DELAY>(&mut self, delay: &mut DELAY) -> Result<(), ()>
         where DELAY: DelayMs<u8>
     {
+        #[cfg(feature = "noblock_spi")]        //  If non-blocking SPI is enabled...
+        mynewt::spi::spi_noblock_init()  //  Init the SPI queue
+            .expect("spi init fail");
+
         self.hard_reset()?;
         self.write_command(Instruction::SWRESET, None)?;
         delay.delay_ms(200);
