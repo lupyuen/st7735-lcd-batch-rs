@@ -34,4 +34,4 @@ panic-halt = "0.2"
 [features]
 default = ["graphics", "noblock_spi"] ####
 graphics = ["embedded-graphics"]
-noblock_spi = [] ####
+noblock_spi = []  #### Render graphics with Non-Blocking SPI
