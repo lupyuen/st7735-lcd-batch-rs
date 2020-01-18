@@ -22,9 +22,15 @@ where
     RST: OutputPin,
 {
     /// SPI
+    #[cfg(feature = "noblock_spi")]  //  If non-blocking SPI is enabled...
+    _spi: SPI,
+    #[cfg(not(feature = "noblock_spi"))]  //  Previously with blocking SPI...
     spi: SPI,
 
     /// Data/command pin.
+    #[cfg(feature = "noblock_spi")]  //  If non-blocking SPI is enabled...
+    _dc: DC,
+    #[cfg(not(feature = "noblock_spi"))]  //  Previously with blocking SPI...
     dc: DC,
 
     /// Reset pin.
@@ -66,8 +72,18 @@ where
     ) -> Self
     {
         let display = ST7735 {
+            #[cfg(feature = "noblock_spi")]       //  If non-blocking SPI is enabled...
+            _spi: spi,
+
+            #[cfg(not(feature = "noblock_spi"))]  //  Previously with blocking SPI...
             spi,
+
+            #[cfg(feature = "noblock_spi")]       //  If non-blocking SPI is enabled...
+            _dc: dc,
+
+            #[cfg(not(feature = "noblock_spi"))]  //  Previously with blocking SPI...
             dc,
+
             rst,
             rgb,
             inverted,
